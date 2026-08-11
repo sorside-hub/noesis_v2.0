@@ -27,7 +27,7 @@ import {
   Sparkles,
   Layers,
 } from 'lucide-react';
-import { getNotes, saveNote, cleanOrphanEmbeddings } from '../services/noteService';
+import { getNotes, saveNote, cleanOrphanEmbeddings, moveToTrash } from '../services/noteService';
 import {
   getAllEmbeddings,
   initNoesisDB,
@@ -430,7 +430,7 @@ export const VaultSettingsDrawer: React.FC<VaultSettingsDrawerProps> = ({
     }
   };
 
-  // 3.5 Wipe All Local Data
+  // 3.5 Move All Notes to Trash
   const handleConfirmWipeData = async () => {
     if (wipeConfirmText.trim().toUpperCase() !== 'HAPUS') {
       showToast('Ketik HAPUS untuk mengonfirmasi.');
@@ -439,16 +439,26 @@ export const VaultSettingsDrawer: React.FC<VaultSettingsDrawerProps> = ({
     setShowWipeConfirm(false);
     setWipeConfirmText('');
     try {
-      await wipeAllLocalData();
-      localStorage.removeItem('noesis_last_synced_at');
-      setLastSyncTime('Belum pernah');
-      showToast('Seluruh data vault lokal berhasil dihapus.');
+      const notes = await getNotes();
+      const activeNotes = notes.filter((n) => !n.deletedAt);
+      
+      if (activeNotes.length === 0) {
+        showToast('Tidak ada catatan aktif untuk dipindahkan.');
+        return;
+      }
+
+      for (const note of activeNotes) {
+        await moveToTrash(note.id);
+      }
+
+      showToast('Semua catatan aktif berhasil dipindahkan ke Sampah.');
+      await refreshVaultStats();
       setTimeout(() => {
         window.location.reload();
       }, 1000);
     } catch (err) {
-      console.error('Wipe data error:', err);
-      showToast('Gagal menghapus data lokal.');
+      console.error('Move all to trash error:', err);
+      showToast('Gagal memindahkan catatan ke Sampah.');
     }
   };
 
@@ -887,7 +897,7 @@ export const VaultSettingsDrawer: React.FC<VaultSettingsDrawerProps> = ({
                     <div className="flex gap-2 pt-1">
                       <button
                         onClick={handleConfirmClearCache}
-                        className="flex-1 py-1.5 bg-neutral-300 hover:bg-white text-white font-medium text-[10px] rounded-md transition-colors cursor-pointer"
+                        className="flex-1 py-1.5 bg-neutral-300 hover:bg-white text-[#111111] font-bold text-[10px] rounded-md transition-colors cursor-pointer"
                       >
                         Ya, Bersihkan Sync Queue
                       </button>
@@ -901,7 +911,7 @@ export const VaultSettingsDrawer: React.FC<VaultSettingsDrawerProps> = ({
                   </div>
                 )}
 
-                {/* Action 2: Wipe All Local Data */}
+                {/* Action 2: Move All Notes to Trash */}
                 <button
                   onClick={() => {
                     setShowWipeConfirm(true);
@@ -913,9 +923,9 @@ export const VaultSettingsDrawer: React.FC<VaultSettingsDrawerProps> = ({
                   <div>
                     <div className="font-medium text-[11px] flex items-center gap-1.5">
                       <Trash2 className="w-3.5 h-3.5 text-neutral-300" />
-                      <span>Hapus Seluruh Data Vault Lokal</span>
+                      <span>Pindahkan Semua Catatan ke Sampah</span>
                     </div>
-                    <div className="text-[9px] text-neutral-300/60 mt-0.5">Menghapus semua catatan, vektor embedding, dan queue lokal</div>
+                    <div className="text-[9px] text-neutral-300/60 mt-0.5">Memindahkan semua catatan lokal aktif ke folder sampah (Trash)</div>
                   </div>
                 </button>
 
@@ -924,10 +934,10 @@ export const VaultSettingsDrawer: React.FC<VaultSettingsDrawerProps> = ({
                   <div className="p-3 bg-neutral-800 border border-neutral-300/40 rounded-lg space-y-2.5 animate-in fade-in">
                     <div className="flex items-center gap-1.5 text-neutral-300 font-semibold text-[11px]">
                       <AlertTriangle className="w-4 h-4 text-neutral-300" />
-                      <span>Peringatan: Hapus Semua Data Lokal?</span>
+                      <span>Pindahkan Semua Catatan ke Sampah?</span>
                     </div>
                     <p className="text-[10px] text-neutral-300/80 leading-relaxed">
-                      Tindakan ini permanen dan tidak dapat dibatalkan. Seluruh catatan, vector embeddings, dan cache lokal akan dihapus dari browser ini.
+                      Tindakan ini akan memindahkan semua catatan aktif ke folder Sampah. Anda masih dapat memulihkannya kembali dari menu Sampah jika diperlukan.
                     </p>
                     <div className="space-y-1.5">
                       <label className="text-[9px] text-neutral-300/80 block">
@@ -945,9 +955,9 @@ export const VaultSettingsDrawer: React.FC<VaultSettingsDrawerProps> = ({
                       <button
                         onClick={handleConfirmWipeData}
                         disabled={wipeConfirmText.trim().toUpperCase() !== 'HAPUS'}
-                        className="flex-1 py-1.5 bg-neutral-300 hover:bg-white disabled:opacity-40 disabled:hover:bg-neutral-300 text-white font-medium text-[10px] rounded-md transition-colors cursor-pointer"
+                        className="flex-1 py-1.5 bg-neutral-300 hover:bg-white disabled:opacity-40 disabled:hover:bg-neutral-300 text-[#111111] font-bold text-[10px] rounded-md transition-colors cursor-pointer"
                       >
-                        Ya, Hapus Semua Data
+                        Ya, Pindahkan ke Sampah
                       </button>
                       <button
                         onClick={() => {
