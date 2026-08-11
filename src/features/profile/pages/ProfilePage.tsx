@@ -11,10 +11,15 @@ interface AiServiceDetail {
 export const ProfilePage: React.FC = () => {
   const { navigate } = useNavigation();
   const [aiServices, setAiServices] = useState<{
-    gemini: AiServiceDetail;
+    gemini: {
+      connected: boolean | null;
+      keysConfigured: number;
+      hasBackupKey: boolean;
+      model: string;
+    };
     groq: AiServiceDetail;
   }>({
-    gemini: { connected: null, model: 'gemini-3.6-flash' },
+    gemini: { connected: null, keysConfigured: 0, hasBackupKey: false, model: 'gemini-3.6-flash' },
     groq: { connected: null, model: 'llama-3.3-70b-versatile' },
   });
 
@@ -56,6 +61,8 @@ export const ProfilePage: React.FC = () => {
           setAiServices({
             gemini: {
               connected: geminiConnected,
+              keysConfigured: data.gemini?.keysConfigured || (hasClientGemini ? 1 : 0),
+              hasBackupKey: data.gemini?.hasBackupKey === true,
               model: data.gemini?.model || 'gemini-3.6-flash',
             },
             groq: {
@@ -68,7 +75,12 @@ export const ProfilePage: React.FC = () => {
       .catch(() => {
         if (isMounted) {
           setAiServices({
-            gemini: { connected: hasClientGemini, model: 'gemini-3.6-flash' },
+            gemini: {
+              connected: hasClientGemini,
+              keysConfigured: hasClientGemini ? 1 : 0,
+              hasBackupKey: false,
+              model: 'gemini-3.6-flash',
+            },
             groq: { connected: hasClientGroq, model: 'llama-3.3-70b-versatile' },
           });
         }
@@ -149,24 +161,42 @@ export const ProfilePage: React.FC = () => {
 
           <div className="bg-[#1C1C1C] border border-[#2A2A2A] rounded-2xl p-4 space-y-4 shadow-sm">
             {/* Gemini */}
-            <div className="space-y-2 pb-3 border-b border-[#2A2A2A]">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-[#242424] border border-[#303030] flex items-center justify-center text-[#E5E5E5]">
-                    <Cpu className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-xs font-semibold text-[#E5E5E5]">Gemini</h3>
-                  </div>
+            <div className="space-y-3 pb-3 border-b border-[#2A2A2A]">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-[#242424] border border-[#303030] flex items-center justify-center text-[#E5E5E5]">
+                  <Cpu className="w-4 h-4" />
                 </div>
-                {renderStatusBadge(aiServices.gemini.connected)}
+                <div>
+                  <h3 className="text-xs font-semibold text-[#E5E5E5]">Gemini AI Service</h3>
+                </div>
               </div>
 
-              <div className="flex items-center justify-between text-[11px] pt-1">
-                <span className="text-[#A3A3A3]">Model:</span>
-                <code className="text-[#E5E5E5] bg-[#141414] px-2 py-0.5 rounded border border-[#262626] font-mono text-[10px]">
-                  {aiServices.gemini.model}
-                </code>
+              <div className="space-y-2 pl-9">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-[#A3A3A3]">🔑 Primary Key:</span>
+                  {renderStatusBadge(aiServices.gemini.connected)}
+                </div>
+
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-[#A3A3A3]">🔑 Secondary Key (Backup):</span>
+                  {aiServices.gemini.hasBackupKey ? (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[#10B981]/15 text-[#34D399] border border-[#10B981]/30">
+                      <CheckCircle2 className="w-3 h-3 shrink-0" />
+                      Connected
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[#2A2A2A] text-[#8E8E93] border border-[#383838]">
+                      Not Configured
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] pt-1">
+                  <span className="text-[#A3A3A3]">Model:</span>
+                  <code className="text-[#E5E5E5] bg-[#141414] px-2 py-0.5 rounded border border-[#262626] font-mono text-[10px]">
+                    {aiServices.gemini.model}
+                  </code>
+                </div>
               </div>
             </div>
 

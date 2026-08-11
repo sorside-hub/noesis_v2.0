@@ -301,6 +301,27 @@ export const VaultSettingsDrawer: React.FC<VaultSettingsDrawerProps> = ({
       const patternHistory = await getThinkingPatternHistory();
       const patternEmbeddings = await getAllPatternEmbeddings();
 
+      // Gather Chat History & AI Settings
+      let chatThreads = [];
+      try {
+        const savedChat = localStorage.getItem('noesis_v2_chat_threads');
+        if (savedChat) {
+          chatThreads = JSON.parse(savedChat);
+        }
+      } catch (e) {
+        console.error('Failed to parse chat threads for export', e);
+      }
+
+      let aiSettings = null;
+      try {
+        const savedSettings = localStorage.getItem('noesis_v2_ai_settings');
+        if (savedSettings) {
+          aiSettings = JSON.parse(savedSettings);
+        }
+      } catch (e) {
+        console.error('Failed to parse ai settings for export', e);
+      }
+
       const exportData = {
         app: 'Noesis Vault',
         version: 2,
@@ -315,7 +336,9 @@ export const VaultSettingsDrawer: React.FC<VaultSettingsDrawerProps> = ({
           patternMeta,
           patternHistory,
           patternEmbeddings
-        }
+        },
+        chatThreads,
+        aiSettings
       };
 
       const jsonString = JSON.stringify(exportData, null, 2);
@@ -330,7 +353,7 @@ export const VaultSettingsDrawer: React.FC<VaultSettingsDrawerProps> = ({
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
 
-      showToast('Vault berhasil diekspor!');
+      showToast('Vault, Insights, & Chat berhasil diekspor!');
     } catch (err) {
       console.error('Export error:', err);
       showToast('Gagal mengekspor Vault.');
@@ -401,8 +424,38 @@ export const VaultSettingsDrawer: React.FC<VaultSettingsDrawerProps> = ({
         }
       }
 
+      // Restore Chat Threads if present
+      let restoredChatThreads = 0;
+      if (imported.chatThreads && Array.isArray(imported.chatThreads)) {
+        try {
+          const existingSaved = localStorage.getItem('noesis_v2_chat_threads');
+          let existingThreads: any[] = [];
+          if (existingSaved) {
+            try { existingThreads = JSON.parse(existingSaved); } catch (_) {}
+          }
+          const threadMap = new Map<string, any>();
+          existingThreads.forEach((t) => { if (t && t.id) threadMap.set(t.id, t); });
+          imported.chatThreads.forEach((t: any) => { if (t && t.id) threadMap.set(t.id, t); });
+          const mergedThreads = Array.from(threadMap.values());
+          localStorage.setItem('noesis_v2_chat_threads', JSON.stringify(mergedThreads));
+          restoredChatThreads = imported.chatThreads.length;
+        } catch (e) {
+          console.error('Failed to restore chat threads', e);
+        }
+      }
+
+      // Restore AI Settings if present
+      if (imported.aiSettings && typeof imported.aiSettings === 'object') {
+        try {
+          localStorage.setItem('noesis_v2_ai_settings', JSON.stringify(imported.aiSettings));
+        } catch (e) {
+          console.error('Failed to restore AI settings', e);
+        }
+      }
+
       await refreshVaultStats();
-      showToast(`Berhasil mengimpor ${restoredNotes} catatan beserta Insights!`);
+      const chatInfo = restoredChatThreads > 0 ? `, & ${restoredChatThreads} riwayat chat` : '';
+      showToast(`Berhasil mengimpor ${restoredNotes} catatan, Insights${chatInfo}!`);
     } catch (err) {
       console.error('Import error:', err);
       showToast('Gagal mengimpor file.');
@@ -687,7 +740,7 @@ export const VaultSettingsDrawer: React.FC<VaultSettingsDrawerProps> = ({
               >
                 <Download className="w-4 h-4 text-neutral-400 group-hover:scale-110 transition-transform mb-1.5" />
                 <div className="font-medium text-[11px] text-[#E5E5E5]">Export</div>
-                <div className="text-[9px] text-[#8E8E93] mt-0.5">Simpan cadangan lokal</div>
+                <div className="text-[9px] text-[#8E8E93] mt-0.5">Cadangkan Vault, Insight & Chat</div>
               </button>
 
               <button
@@ -696,7 +749,7 @@ export const VaultSettingsDrawer: React.FC<VaultSettingsDrawerProps> = ({
               >
                 <Upload className="w-4 h-4 text-neutral-400 group-hover:scale-110 transition-transform mb-1.5" />
                 <div className="font-medium text-[11px] text-[#E5E5E5]">Import</div>
-                <div className="text-[9px] text-[#8E8E93] mt-0.5">Pulihkan data dari JSON</div>
+                <div className="text-[9px] text-[#8E8E93] mt-0.5">Pulihkan semua data dari JSON</div>
               </button>
             </div>
           </div>
