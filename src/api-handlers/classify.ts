@@ -1,12 +1,15 @@
+import { getGeminiApiKeys } from './geminiHelper';
+
 export async function handleClassify(req: Request, env?: Record<string, any>): Promise<Response> {
   try {
     const body = (await req.json().catch(() => ({}))) as {
       message?: string;
       customGroqApiKey?: string;
+      customGeminiApiKey?: string;
       model?: string;
     };
 
-    const { message, customGroqApiKey, model } = body;
+    const { message, customGroqApiKey, customGeminiApiKey, model } = body;
 
     if (!message || typeof message !== 'string' || !message.trim()) {
       return new Response(JSON.stringify({ error: 'Pesan tidak boleh kosong.' }), {
@@ -15,20 +18,23 @@ export async function handleClassify(req: Request, env?: Record<string, any>): P
       });
     }
 
-    const apiKey =
+    const geminiApiKeys = getGeminiApiKeys(env);
+    if (customGeminiApiKey && typeof customGeminiApiKey === 'string' && customGeminiApiKey.trim()) {
+      geminiApiKeys.unshift(customGeminiApiKey.trim());
+    }
+
+    const groqApiKey =
       customGroqApiKey ||
       env?.GROQ_API_KEY ||
       env?.VITE_GROQ_API_KEY ||
       (typeof process !== 'undefined' ? process.env?.GROQ_API_KEY : '');
 
-    if (!apiKey) {
+    if (geminiApiKeys.length === 0 && !groqApiKey) {
       return new Response(
-        JSON.stringify({ error: 'GROQ_API_KEY belum dikonfigurasi.', needsApiKey: true }),
+        JSON.stringify({ error: 'GEMINI_API_KEY atau GROQ_API_KEY belum dikonfigurasi.', needsApiKey: true }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
-
-    const groqModel = model || 'llama-3.3-70b-versatile';
 
     const systemPrompt = `Kamu adalah AI Classifier untuk Noesis Second Brain dalam "Smart Mode" (Thinking with Vault).
 
@@ -83,39 +89,85 @@ Output WAJIB berupa JSON valid saja tanpa teks tambahan:
   "reason": "Penjelasan singkat alasan klasifikasi"
 }`;
 
-    const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: groqModel,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: message },
-        ],
-        response_format: { type: 'json_object' },
-        temperature: 0.1,
-      }),
-    });
+    let rawJsonResponse = '';
 
-    if (!groqResponse.ok) {
+    // Try Gemini API keys first with gemini-3.5-flash-lite
+    classifyGeminiLoop: for (const geminiKey of geminiApiKeys) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${geminiKey}`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: 'user',
+                parts: [{ text: `${systemPrompt}\n\n${message}` }],
+              },
+            ],
+            generationConfig: {
+              temperature: 0.1,
+              responseMimeType: 'application/json',
+            },
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const textCandidate = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (textCandidate) {
+            rawJsonResponse = textCandidate;
+            break classifyGeminiLoop;
+          }
+        }
+      } catch (e) {
+        console.warn('[Classify AI] Gemini attempt failed:', e);
+      }
+    }
+
+    // Fallback to Groq if Gemini fails
+    if (!rawJsonResponse && groqApiKey) {
+      try {
+        const groqModel = model || 'llama-3.3-70b-versatile';
+        const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${groqApiKey}`,
+          },
+          body: JSON.stringify({
+            model: groqModel,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: message },
+            ],
+            response_format: { type: 'json_object' },
+            temperature: 0.1,
+          }),
+        });
+
+        if (groqResponse.ok) {
+          const responseData = (await groqResponse.json()) as any;
+          rawJsonResponse = responseData.choices?.[0]?.message?.content || '';
+        }
+      } catch (groqErr) {
+        console.warn('[Classify AI] Groq fallback failed:', groqErr);
+      }
+    }
+
+    if (!rawJsonResponse) {
       return new Response(
-        JSON.stringify({ error: 'Gagal memanggil API Groq Classifier.' }),
-        { status: groqResponse.status, headers: { 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'Gagal memproses klasifikasi dari AI (Gemini & Groq gagal).' }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    const responseData = (await groqResponse.json()) as any;
-    const rawText = responseData.choices?.[0]?.message?.content || '';
-
     let jsonResult: any = {};
     try {
-      jsonResult = JSON.parse(rawText);
+      jsonResult = JSON.parse(rawJsonResponse);
     } catch {
       return new Response(
-        JSON.stringify({ error: 'Gagal memproses format JSON dari Groq AI.' }),
+        JSON.stringify({ error: 'Gagal memproses format JSON dari AI.' }),
         { status: 500, headers: { 'Content-Type': 'application/json' } }
       );
     }

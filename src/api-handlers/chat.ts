@@ -1,3 +1,5 @@
+import { getGeminiApiKeys } from './geminiHelper';
+
 export async function handleChat(req: Request, env?: Record<string, any>): Promise<Response> {
   try {
     const body = (await req.json().catch(() => ({}))) as { message?: string; history?: any[] };
@@ -10,12 +12,9 @@ export async function handleChat(req: Request, env?: Record<string, any>): Promi
       });
     }
 
-    const apiKey =
-      env?.GEMINI_API_KEY ||
-      env?.VITE_GEMINI_API_KEY ||
-      (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : '');
+    const apiKeys = getGeminiApiKeys(env);
 
-    if (!apiKey) {
+    if (apiKeys.length === 0) {
       return new Response(
         JSON.stringify({
           error:
@@ -55,32 +54,42 @@ Berikan jawaban dengan format Markdown yang rapi dan mudah dibaca di layar HP/mo
       },
     };
 
-    const modelsToTry = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-flash-lite'];
+    const modelsToTry = ['gemini-3.6-flash', 'gemini-3.5-flash'];
     let geminiRes: Response | null = null;
     let usedModel = modelsToTry[0];
+    let usedKeyType = 'primary';
     let lastErr = '';
 
-    for (const model of modelsToTry) {
-      try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`;
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(geminiPayload),
-        });
+    modelLoop: for (const model of modelsToTry) {
+      for (let keyIdx = 0; keyIdx < apiKeys.length; keyIdx++) {
+        const apiKey = apiKeys[keyIdx];
+        const keyLabel = keyIdx === 0 ? 'Primary' : 'Secondary';
 
-        if (res.ok && res.body) {
-          geminiRes = res;
-          usedModel = model;
-          break;
-        } else {
-          const errText = await res.text();
-          lastErr = `Model ${model} gagal (${res.status}): ${errText}`;
+        try {
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`;
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(geminiPayload),
+          });
+
+          if (res.ok && res.body) {
+            geminiRes = res;
+            usedModel = model;
+            usedKeyType = keyLabel.toLowerCase();
+            break modelLoop;
+          } else {
+            const errText = await res.text();
+            lastErr = `Model ${model} [Key: ${keyLabel}] gagal (${res.status}): ${errText}`;
+            console.warn(`[Chat API] ${lastErr}`);
+            // If rate limited (429) or quota error (403/503), immediately continue to try next key!
+          }
+        } catch (e: any) {
+          lastErr = `[Key: ${keyLabel}] ${e?.message || String(e)}`;
+          console.warn(`[Chat API] ${lastErr}`);
         }
-      } catch (e: any) {
-        lastErr = e?.message || String(e);
       }
     }
 

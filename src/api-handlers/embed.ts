@@ -1,30 +1,34 @@
-async function getSingleEmbedding(apiKey: string | undefined, text: string): Promise<number[]> {
+import { getGeminiApiKeys } from './geminiHelper';
+
+async function getSingleEmbedding(apiKeys: string[], text: string): Promise<number[]> {
   if (!text || !text.trim()) return [];
 
-  if (apiKey) {
+  if (apiKeys.length > 0) {
     const modelsToTry = ['text-embedding-004', 'embedding-001'];
 
     for (const model of modelsToTry) {
-      try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:embedContent?key=${apiKey}`;
-        const resp = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: `models/${model}`,
-            content: { parts: [{ text }] },
-          }),
-        });
+      for (const apiKey of apiKeys) {
+        try {
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:embedContent?key=${apiKey}`;
+          const resp = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: `models/${model}`,
+              content: { parts: [{ text }] },
+            }),
+          });
 
-        if (resp.ok) {
-          const data = (await resp.json()) as any;
-          const values = data.embedding?.values;
-          if (values && Array.isArray(values) && values.length > 0) {
-            return values;
+          if (resp.ok) {
+            const data = (await resp.json()) as any;
+            const values = data.embedding?.values;
+            if (values && Array.isArray(values) && values.length > 0) {
+              return values;
+            }
           }
+        } catch {
+          // try next key or next model
         }
-      } catch {
-        // try next
       }
     }
   }
@@ -53,16 +57,13 @@ export async function handleEmbed(req: Request, env?: Record<string, any>): Prom
 
     const { text, texts } = body;
 
-    const apiKey =
-      env?.GEMINI_API_KEY ||
-      env?.VITE_GEMINI_API_KEY ||
-      (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : '');
+    const apiKeys = getGeminiApiKeys(env);
 
     if (Array.isArray(texts)) {
       const embeddings = await Promise.all(
         texts.map(async (t) => {
           if (!t || typeof t !== 'string') return [];
-          return getSingleEmbedding(apiKey, t);
+          return getSingleEmbedding(apiKeys, t);
         })
       );
       return new Response(JSON.stringify({ embeddings }), {
@@ -70,7 +71,7 @@ export async function handleEmbed(req: Request, env?: Record<string, any>): Prom
         headers: { 'Content-Type': 'application/json' },
       });
     } else if (typeof text === 'string') {
-      const emb = await getSingleEmbedding(apiKey, text);
+      const emb = await getSingleEmbedding(apiKeys, text);
       return new Response(JSON.stringify({ embedding: emb }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -88,3 +89,4 @@ export async function handleEmbed(req: Request, env?: Record<string, any>): Prom
     );
   }
 }
+

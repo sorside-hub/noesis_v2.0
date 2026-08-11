@@ -1,21 +1,19 @@
 import { GoogleGenAI, Type } from "@google/genai";
+import { getGeminiApiKeys } from "./geminiHelper";
 
 export async function handleReflections(req: Request, env?: Record<string, any>): Promise<Response> {
   try {
     const body = (await req.json().catch(() => ({}))) as any;
     const { themes = [], thinkingPatterns = [], connections = [], notes = [] } = body;
 
-    const geminiApiKey =
-      env?.GEMINI_API_KEY ||
-      env?.VITE_GEMINI_API_KEY ||
-      (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : '');
+    const geminiApiKeys = getGeminiApiKeys(env);
 
     const groqApiKey =
       env?.GROQ_API_KEY ||
       env?.VITE_GROQ_API_KEY ||
       (typeof process !== 'undefined' ? process.env?.GROQ_API_KEY : '');
 
-    if (!geminiApiKey && !groqApiKey) {
+    if (geminiApiKeys.length === 0 && !groqApiKey) {
       return new Response(
         JSON.stringify({
           error: 'API Key (GEMINI_API_KEY atau GROQ_API_KEY) belum dikonfigurasi.',
@@ -26,6 +24,7 @@ export async function handleReflections(req: Request, env?: Record<string, any>)
         }
       );
     }
+
 
     // Construct high-quality context text about themes, thinking patterns, connections, and notes
     let dataContext = `DATA GRAPH PENGETAHUAN NOESIS:\n\n`;
@@ -81,8 +80,10 @@ Hasilkan minimal 2 dan maksimal 4 refleksi yang paling berharga dari data di ata
 
     let rawJsonResponse = '';
 
-    // Primary: Google Gen AI SDK
-    if (geminiApiKey) {
+    // Primary & Secondary: Google Gen AI / Gemini Keys
+    for (const geminiApiKey of geminiApiKeys) {
+      if (rawJsonResponse) break;
+
       try {
         const ai = new GoogleGenAI({
           apiKey: geminiApiKey,
@@ -94,7 +95,7 @@ Hasilkan minimal 2 dan maksimal 4 refleksi yang paling berharga dari data di ata
         });
 
         const response = await ai.models.generateContent({
-          model: 'gemini-3.6-flash',
+          model: 'gemini-3.1-pro-preview',
           contents: `${systemPrompt}\n\n${dataContext}`,
           config: {
             temperature: 0.3,
@@ -129,13 +130,14 @@ Hasilkan minimal 2 dan maksimal 4 refleksi yang paling berharga dari data di ata
 
         if (response?.text) {
           rawJsonResponse = response.text;
+          break;
         }
       } catch (geminiError) {
         console.warn('[Reflection AI] Google Gen AI SDK failed, trying fallback raw fetch:', geminiError);
         
         // Fallback to raw fetch if SDK fails for any model mismatch or custom issue
         try {
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${geminiApiKey}`;
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${geminiApiKey}`;
           const res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -157,6 +159,7 @@ Hasilkan minimal 2 dan maksimal 4 refleksi yang paling berharga dari data di ata
             const textCandidate = data?.candidates?.[0]?.content?.parts?.[0]?.text;
             if (textCandidate) {
               rawJsonResponse = textCandidate;
+              break;
             }
           }
         } catch (fetchError) {
@@ -164,6 +167,7 @@ Hasilkan minimal 2 dan maksimal 4 refleksi yang paling berharga dari data di ata
         }
       }
     }
+
 
     // Fallback: Groq API
     if (!rawJsonResponse && groqApiKey) {

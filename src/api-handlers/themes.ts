@@ -1,3 +1,5 @@
+import { getGeminiApiKeys } from './geminiHelper';
+
 export async function handleThemes(req: Request, env?: Record<string, any>): Promise<Response> {
   try {
     const body = (await req.json().catch(() => ({}))) as any;
@@ -16,17 +18,14 @@ export async function handleThemes(req: Request, env?: Record<string, any>): Pro
       );
     }
 
-    const geminiApiKey =
-      env?.GEMINI_API_KEY ||
-      env?.VITE_GEMINI_API_KEY ||
-      (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : '');
+    const geminiApiKeys = getGeminiApiKeys(env);
 
     const groqApiKey =
       env?.GROQ_API_KEY ||
       env?.VITE_GROQ_API_KEY ||
       (typeof process !== 'undefined' ? process.env?.GROQ_API_KEY : '');
 
-    if (!geminiApiKey && !groqApiKey) {
+    if (geminiApiKeys.length === 0 && !groqApiKey) {
       return new Response(
         JSON.stringify({
           error: 'API Key (GEMINI_API_KEY atau GROQ_API_KEY) belum dikonfigurasi pada environment.',
@@ -37,6 +36,7 @@ export async function handleThemes(req: Request, env?: Record<string, any>): Pro
         }
       );
     }
+
 
     const notesMap = new Map<string, any>(rawNotes.map((n: any) => [n.id, n]));
 
@@ -80,10 +80,10 @@ STRUKTUR JSON OUTPUT (WAJIB JSON VALID SAJA):
 
     let rawJsonResponse = '';
 
-    // Primary Attempt: Gemini API
-    if (geminiApiKey) {
-      const modelsToTry = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-flash-lite'];
-      for (const model of modelsToTry) {
+    // Primary & Secondary Attempts: Gemini API Keys
+    const modelsToTry = ['gemini-3.5-flash', 'gemini-3.5-flash-lite'];
+    themeLoop: for (const model of modelsToTry) {
+      for (const geminiApiKey of geminiApiKeys) {
         try {
           const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
           const res = await fetch(url, {
@@ -108,7 +108,7 @@ STRUKTUR JSON OUTPUT (WAJIB JSON VALID SAJA):
             const textCandidate = data?.candidates?.[0]?.content?.parts?.[0]?.text;
             if (textCandidate) {
               rawJsonResponse = textCandidate;
-              break;
+              break themeLoop;
             }
           }
         } catch (e) {
@@ -116,6 +116,7 @@ STRUKTUR JSON OUTPUT (WAJIB JSON VALID SAJA):
         }
       }
     }
+
 
     // Fallback Attempt: Groq API
     if (!rawJsonResponse && groqApiKey) {

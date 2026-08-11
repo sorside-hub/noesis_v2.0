@@ -1,8 +1,7 @@
+import { getGeminiApiKeys } from './geminiHelper';
+
 export async function handleAiStatus(req: Request, env?: Record<string, any>): Promise<Response> {
-  const geminiKey =
-    env?.GEMINI_API_KEY ||
-    env?.VITE_GEMINI_API_KEY ||
-    (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY || process.env?.VITE_GEMINI_API_KEY : '');
+  const geminiKeys = getGeminiApiKeys(env);
 
   const groqKey =
     env?.GROQ_API_KEY ||
@@ -12,7 +11,9 @@ export async function handleAiStatus(req: Request, env?: Record<string, any>): P
   return new Response(
     JSON.stringify({
       gemini: {
-        connected: Boolean(geminiKey && geminiKey.trim().length > 0),
+        connected: geminiKeys.length > 0,
+        keysConfigured: geminiKeys.length,
+        hasBackupKey: geminiKeys.length > 1,
         model: 'gemini-3.6-flash',
       },
       groq: {
@@ -29,3 +30,4 @@ export async function handleAiStatus(req: Request, env?: Record<string, any>): P
     }
   );
 }
+
