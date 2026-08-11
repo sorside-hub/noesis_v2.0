@@ -190,13 +190,6 @@ export const ProfilePage: React.FC = () => {
                     </span>
                   )}
                 </div>
-
-                <div className="flex items-center justify-between text-[11px] pt-1">
-                  <span className="text-[#A3A3A3]">Model:</span>
-                  <code className="text-[#E5E5E5] bg-[#141414] px-2 py-0.5 rounded border border-[#262626] font-mono text-[10px]">
-                    {aiServices.gemini.model}
-                  </code>
-                </div>
               </div>
             </div>
 
@@ -212,13 +205,6 @@ export const ProfilePage: React.FC = () => {
                   </div>
                 </div>
                 {renderStatusBadge(aiServices.groq.connected)}
-              </div>
-
-              <div className="flex items-center justify-between text-[11px] pt-1">
-                <span className="text-[#A3A3A3]">Model:</span>
-                <code className="text-[#E5E5E5] bg-[#141414] px-2 py-0.5 rounded border border-[#262626] font-mono text-[10px]">
-                  {aiServices.groq.model}
-                </code>
               </div>
             </div>
           </div>
