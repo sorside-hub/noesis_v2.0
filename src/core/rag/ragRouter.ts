@@ -252,7 +252,15 @@ export class RAGRouter {
     // Mode OFF -> Directly call Gemini normal, skip retrieval entirely
     if (ragMode === 'off') {
       onStatus?.('✍️ Menyusun jawaban...');
-      const fullText = await sendMessageStream(message, history, onChunk, handleMeta);
+      const offPrompt = `[MODE: GENERAL CHAT (OFF)]
+Instruksi Mode OFF:
+Kamu berada dalam Mode General Chat (OFF).
+Jawablah pertanyaan pengguna secara murni menggunakan pengetahuan umum kamu. Jangan merujuk ke Vault atau berasumsi pencarian catatan dilakukan.
+
+---
+[PESAN PENGGUNA]
+${message}`;
+      const fullText = await sendMessageStream(offPrompt, history, onChunk, handleMeta);
       const processingTime = Math.round(performance.now() - startTime);
 
       return {
@@ -498,8 +506,9 @@ ${contextText}
 ---
 [PESAN PENGGUNA]
 ${message}`
-        : `[KONTEKS DARI VAULT CATATAN PENGGUNA]
-Berikut adalah catatan/informasi dari Vault pengguna:
+        : `[MODE: STRICT VAULT (ON)]
+[KONTEKS DARI VAULT CATATAN PENGGUNA]
+Berikut adalah catatan/informasi dari Vault pengguna yang DITEMUKAN:
 
 ${contextText}
 
@@ -509,7 +518,8 @@ ${message}
 
 Instruksi Mode ON (Vault-Focused):
 1. Jawablah pertanyaan pengguna secara presisi berdasarkan catatan pengguna di Vault di atas.
-2. Fokus pada informasi yang ada di dalam catatan tersebut.`;
+2. Fokus pada informasi yang ada di dalam catatan tersebut.
+3. DILARANG KERAS menyatakan kamu tidak memiliki akses ke Vault.`;
 
       onStatus?.('✍️ Menyusun jawaban...');
       const fullText = await sendMessageStream(augmentedMessage, history, onChunk, handleMeta);
@@ -588,6 +598,8 @@ ${styleInstruction}
 [EVALUASI RELEVANSI VAULT: RENDAH (Composite Score ${Math.round(confidenceResult.compositeScore * 100)}%, Highest ${Math.round(confidenceResult.highestScore * 100)}% < 40%)]
 Sistem telah memeriksa Vault pengguna namun tingkat relevansi catatan yang ditemukan kurang memadai (<40%).
 Abaikan catatan Vault tersebut dan jangan memaksa merujuk ke catatan yang tidak relevan.
+Jika pengguna menanyakan apakah suatu topik pernah ditulis/disimpan di Vault, sampaikan secara ramah bahwa catatan relevan tidak ditemukan di Vault, lalu bantu jawab menggunakan pengetahuan umum.
+DILARANG KERAS menyatakan bahwa kamu tidak memiliki akses atau tidak terhubung ke Vault.
 Jawablah pertanyaan pengguna secara komprehensif, bijak, dan berwawasan mendalam menggunakan pengetahuan umum AI.
 
 ---
@@ -603,12 +615,27 @@ ${styleInstruction}
 
 Instruksi Smart Mode (Thinking with Vault - Fallback Pengetahuan Umum):
 Sistem telah memeriksa Vault pengguna namun tidak menemukan catatan khusus yang relevan untuk pertanyaan ini.
+Jika pengguna menanyakan apakah suatu topik pernah ditulis atau ada di Vault, jelaskan secara jujur dan ramah bahwa catatan relevan tidak ditemukan di Vault kamu.
+DILARANG KERAS menyatakan bahwa kamu tidak memiliki akses atau tidak terhubung ke Vault.
 Jawablah pertanyaan pengguna secara komprehensif, bijak, dan berwawasan mendalam menggunakan pengetahuan umum AI. Jika pengguna meminta analisis, kritik, perbandingan, atau pengembangan ide, berikan analisis mendalam terbaikmu.
 
 ---
 [PESAN PENGGUNA]
 ${message}`;
         }
+      } else if (ragMode === 'on') {
+        promptToSend = `[MODE: STRICT VAULT (ON)]
+[STATUS VAULT: PENCARIAN DILAKUKAN, TETAPI 0 CATATAN DITEMUKAN]
+
+Instruksi Wajib Mode ON:
+1. Sistem telah melakukan pencarian penuh ke Vault catatan pengguna untuk pertanyaan ini, namun TIDAK MENEMUKAN catatan yang relevan.
+2. Beritahukan pengguna secara jelas, jujur, dan ramah bahwa kamu TIDAK MENEMUKAN catatan mengenai topik ini di Vault mereka. Contoh: "Saya telah mencari di Vault kamu, tetapi tidak menemukan catatan mengenai [topik]."
+3. DILARANG KERAS menyatakan kamu tidak memiliki akses, tidak punya izin, atau tidak terhubung ke Vault.
+4. Setelah menyampaikan bahwa catatan tidak ditemukan di Vault, kamu boleh memberikan penjelasan atau informasi umum singkat yang relevan untuk membantu pengguna.
+
+---
+[PESAN PENGGUNA]
+${message}`;
       }
 
       const fullText = await sendMessageStream(promptToSend, history, onChunk, handleMeta);
